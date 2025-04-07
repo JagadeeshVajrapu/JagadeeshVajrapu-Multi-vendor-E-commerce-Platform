@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>My Orders - MVE</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        .order-card {
+            transition: transform 0.2s;
+        }
+        .order-card:hover {
+            transform: translateY(-5px);
+        }
+        .status-badge {
+            font-size: 0.9rem;
+            padding: 0.5rem 1rem;
+        }
+    </style>
+</head>
+<body>
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+        <div class="container">
+            <a class="navbar-brand" href="/">MVE</a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav me-auto">
+                    <li class="nav-item">
+                        <a class="nav-link" href="/customer-dashboard">Home</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link active" href="/orders">My Orders</a>
+                    </li>
+                </ul>
+                <div class="d-flex">
+                    <a href="/cart" class="btn btn-outline-light position-relative me-2">
+                        <i class="fas fa-shopping-cart"></i>
+                        <span id="cartCount" class="badge bg-danger cart-badge">0</span>
+                    </a>
+                    <button class="btn btn-outline-light" onclick="logout()">Logout</button>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container mt-4">
+        <h2>My Orders</h2>
+        <div id="ordersContainer" class="mt-4">
+            <!-- Orders will be loaded here -->
+        </div>
+    </div>
+
+    <!-- Order Details Modal -->
+    <div class="modal fade" id="orderModal" tabindex="-1">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Order Details</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <h6>Order ID</h6>
+                            <p id="modalOrderId"></p>
+                        </div>
+                        <div class="col-md-6">
+                            <h6>Order Date</h6>
+                            <p id="modalOrderDate"></p>
+                        </div>
+                    </div>
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <h6>Status</h6>
+                            <span id="modalOrderStatus" class="badge"></span>
+                        </div>
+                        <div class="col-md-6">
+                            <h6>Total Amount</h6>
+                            <p id="modalOrderTotal"></p>
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <h6>Shipping Address</h6>
+                        <p id="modalShippingAddress"></p>
+                    </div>
+                    <div class="table-responsive">
+                        <table class="table">
+                            <thead>
+                                <tr>
+                                    <th>Product</th>
+                                    <th>Price</th>
+                                    <th>Quantity</th>
+                                    <th>Total</th>
+                                </tr>
+                            </thead>
+                            <tbody id="modalOrderItems">
+                                <!-- Order items will be loaded here -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        const orderModal = new bootstrap.Modal(document.getElementById('orderModal'));
+
+        // Load orders on page load
+        document.addEventListener('DOMContentLoaded', () => {
+            loadOrders();
+            updateCartCount();
+        });
+
+        function loadOrders() {
+            fetch('/api/orders', {
+                headers: {
+                    'Authorization': `Bearer ${localStorage.getItem('token')}`
+                }
+            })
+            .then(response => response.json())
+            .then(orders => {
+                const container = document.getElementById('ordersContainer');
+                container.innerHTML = '';
+
+                if (orders.length === 0) {
+                    container.innerHTML = '<div class="alert alert-info">No orders found.</div>';
+                    return;
+                }
+
+                orders.forEach(order => {
+                    const card = document.createElement('div');
+                    card.className = 'card mb-3 order-card';
+                    card.innerHTML = `
+                        <div class="card-body">
+                            <div class="row">
+                                <div class="col-md-3">
+                                    <h6>Order ID</h6>
+                                    <p>${order._id}</p>
+                                </div>
+                                <div class="col-md-3">
+                                    <h6>Date</h6>
+                                    <p>${new Date(order.created_at).toLocaleDateString()}</p>
+                                </div>
+                                <div class="col-md-3">
+                                    <h6>Status</h6>
+                                    <span class="badge ${getStatusBadgeClass(order.status)} status-badge">
+                                        ${order.status}
+                                    </span>
+                                </div>
+                                <div class="col-md-3 text-end">
+                                    <h6>Total</h6>
+                                    <p>$${order.total.toFixed(2)}</p>
+                                    <button class="btn btn-primary btn-sm" 
+                                            onclick="showOrderDetails('${order._id}')">
+                                        View Details
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                    container.appendChild(card);
+                });
+            })
+            .catch(error => console.error('Error loading orders:', error));
+        }
+
+        function showOrderDetails(orderId) {
+            fetch(`/api/orders/${orderId}`, {
+                headers: {
+                    'Authorization': `Bearer ${localStorage.getItem('token')}`
+                }
+            })
+            .then(response => response.json())
+            .then(order => {
+                document.getElementById('modalOrderId').textContent = order._id;
+                document.getElementById('modalOrderDate').textContent = 
+                    new Date(order.created_at).toLocaleString();
+                document.getElementById('modalOrderStatus').textContent = order.status;
+                document.getElementById('modalOrderStatus').className = 
+                    `badge ${getStatusBadgeClass(order.status)}`;
+                document.getElementById('modalOrderTotal').textContent = 
+                    `$${order.total.toFixed(2)}`;
+                document.getElementById('modalShippingAddress').textContent = 
+                    `${order.shipping_address.address}, ${order.shipping_address.city}, 
+                     ${order.shipping_address.state} ${order.shipping_address.zipCode}`;
+
+                const itemsContainer = document.getElementById('modalOrderItems');
+                itemsContainer.innerHTML = '';
+
+                order.items.forEach(item => {
+                    const row = document.createElement('tr');
+                    row.innerHTML = `
+                        <td>${item.product.name}</td>
+                        <td>$${item.product.price.toFixed(2)}</td>
+                        <td>${item.quantity}</td>
+                        <td>$${(item.product.price * item.quantity).toFixed(2)}</td>
+                    `;
+                    itemsContainer.appendChild(row);
+                });
+
+                orderModal.show();
+            })
+            .catch(error => console.error('Error loading order details:', error));
+        }
+
+        function getStatusBadgeClass(status) {
+            switch (status.toLowerCase()) {
+                case 'pending':
+                    return 'bg-warning';
+                case 'processing':
+                    return 'bg-info';
+                case 'shipped':
+                    return 'bg-primary';
+                case 'delivered':
+                    return 'bg-success';
+                case 'cancelled':
+                    return 'bg-danger';
+                default:
+                    return 'bg-secondary';
+            }
+        }
+
+        function updateCartCount() {
+            fetch('/api/cart', {
+                headers: {
+                    'Authorization': `Bearer ${localStorage.getItem('token')}`
+                }
+            })
+            .then(response => response.json())
+            .then(cart => {
+                const count = cart.items.reduce((total, item) => total + item.quantity, 0);
+                document.getElementById('cartCount').textContent = count;
+            })
+            .catch(error => console.error('Error updating cart count:', error));
+        }
+
+        function logout() {
+            localStorage.removeItem('token');
+            window.location.href = '/';
+        }
+    </script>
+</body>
+</html> 

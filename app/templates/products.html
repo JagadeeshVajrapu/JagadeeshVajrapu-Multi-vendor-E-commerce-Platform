@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+
+{% block title %}Products - Marketplace{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <h1 class="display-4">Browse Products</h1>
+    <p class="lead">Find amazing products from our vendors</p>
+    
+    <div class="row" id="products-container">
+        {% if products %}
+            {% for product in products %}
+            <div class="col-md-4 mb-4">
+                <div class="card h-100">
+                    {% if product.images and product.images[0] %}
+                    <img src="{{ product.images[0] }}" 
+                         class="card-img-top" 
+                         alt="{{ product.name }}"
+                         style="height: 200px; object-fit: cover;"
+                         onerror="this.onerror=null; this.src='/static/images/default-product.png';">
+                    {% else %}
+                    <div class="card-img-top" style="height: 200px; background-color: #f8f9fa; display: flex; align-items: center; justify-content: center;">
+                        <i class="fas fa-image fa-3x text-muted"></i>
+                    </div>
+                    {% endif %}
+                    <div class="card-body d-flex flex-column">
+                        <h5 class="card-title">{{ product.name }}</h5>
+                        <p class="card-text">{{ product.description }}</p>
+                        <p class="card-text">
+                            <strong>Price:</strong> ${{ "%.2f"|format(product.price) }}<br>
+                            <strong>Stock:</strong> {{ product.stock }}
+                        </p>
+                        <div class="mt-auto">
+                            <button class="btn btn-primary add-to-cart" 
+                                    data-product-id="{{ product._id }}"
+                                    {% if product.stock <= 0 %}disabled{% endif %}>
+                                {% if product.stock <= 0 %}Out of Stock{% else %}Add to Cart{% endif %}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        {% else %}
+            <div class="col-12">
+                <div class="alert alert-info">
+                    No products available at the moment.
+                </div>
+            </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Load products if not already loaded
+    if (document.getElementById('products-container').children.length === 0) {
+        loadProducts();
+    }
+});
+</script>
+{% endblock %} 

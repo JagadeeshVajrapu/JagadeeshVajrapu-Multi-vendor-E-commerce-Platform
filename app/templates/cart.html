@@ -1,0 +1,215 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container mt-5">
+    <h2>Shopping Cart</h2>
+    <div id="cart-content">
+        <div class="row">
+            <div class="col-md-8">
+                <div id="cart-items">
+                    <!-- Cart items will be loaded here -->
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="card">
+                    <div class="card-body">
+                        <h5 class="card-title">Cart Summary</h5>
+                        <p class="card-text">Total Items: <span id="total-items">0</span></p>
+                        <p class="card-text">Total Amount: $<span id="total-amount">0.00</span></p>
+                        <button class="btn btn-primary w-100" onclick="checkout()">Proceed to Checkout</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<template id="cart-item-template">
+    <div class="card mb-3 cart-item">
+        <div class="row g-0">
+            <div class="col-md-2">
+                <img src="" class="img-fluid rounded-start product-image" alt="Product Image">
+            </div>
+            <div class="col-md-10">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between">
+                        <h5 class="card-title product-name"></h5>
+                        <button class="btn btn-danger btn-sm remove-item">Remove</button>
+                    </div>
+                    <p class="card-text product-price"></p>
+                    <div class="quantity-controls">
+                        <button class="btn btn-outline-secondary btn-sm decrease-quantity">-</button>
+                        <span class="quantity mx-2">1</span>
+                        <button class="btn btn-outline-secondary btn-sm increase-quantity">+</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</template>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', loadCart);
+
+async function loadCart() {
+    try {
+        const token = localStorage.getItem('token');
+        if (!token) {
+            window.location.href = '/login';
+            return;
+        }
+
+        const response = await fetch('/api/cart', {
+            headers: {
+                'Authorization': `Bearer ${token}`
+            }
+        });
+
+        if (response.status === 401) {
+            localStorage.removeItem('token');
+            window.location.href = '/login';
+            return;
+        }
+
+        if (!response.ok) {
+            const data = await response.json();
+            throw new Error(data.error || 'Failed to load cart');
+        }
+
+        const cart = await response.json();
+        displayCart(cart);
+    } catch (error) {
+        console.error('Error loading cart:', error);
+        showError(error.message);
+    }
+}
+
+function displayCart(cart) {
+    const cartItems = document.getElementById('cart-items');
+    const template = document.getElementById('cart-item-template');
+    cartItems.innerHTML = '';
+
+    if (!cart.items || cart.items.length === 0) {
+        cartItems.innerHTML = '<div class="alert alert-info">Your cart is empty</div>';
+        updateTotals(0, 0);
+        return;
+    }
+
+    let totalItems = 0;
+    let totalAmount = 0;
+
+    cart.items.forEach(item => {
+        const clone = template.content.cloneNode(true);
+        
+        const img = clone.querySelector('.product-image');
+        img.src = item.product.image_url || '/static/images/default.jpg';
+        img.alt = item.product.name;
+        
+        clone.querySelector('.product-name').textContent = item.product.name;
+        clone.querySelector('.product-price').textContent = `$${item.product.price.toFixed(2)}`;
+        clone.querySelector('.quantity').textContent = item.quantity;
+
+        const itemElement = clone.querySelector('.cart-item');
+        itemElement.dataset.productId = item.product._id;
+        itemElement.dataset.quantity = item.quantity;
+
+        // Setup event listeners
+        clone.querySelector('.remove-item').addEventListener('click', () => removeFromCart(item.product._id));
+        clone.querySelector('.decrease-quantity').addEventListener('click', () => updateQuantity(item.product._id, item.quantity - 1));
+        clone.querySelector('.increase-quantity').addEventListener('click', () => updateQuantity(item.product._id, item.quantity + 1));
+
+        cartItems.appendChild(clone);
+
+        totalItems += item.quantity;
+        totalAmount += item.quantity * item.product.price;
+    });
+
+    updateTotals(totalItems, totalAmount);
+}
+
+function updateTotals(items, amount) {
+    document.getElementById('total-items').textContent = items;
+    document.getElementById('total-amount').textContent = amount.toFixed(2);
+}
+
+async function updateQuantity(productId, newQuantity) {
+    if (newQuantity < 1) {
+        await removeFromCart(productId);
+        return;
+    }
+
+    try {
+        const token = localStorage.getItem('token');
+        const response = await fetch('/api/cart', {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify({
+                product_id: productId,
+                quantity: newQuantity
+            })
+        });
+
+        if (!response.ok) {
+            const data = await response.json();
+            throw new Error(data.error || 'Failed to update quantity');
+        }
+
+        await loadCart();
+    } catch (error) {
+        console.error('Error updating quantity:', error);
+        showError(error.message);
+    }
+}
+
+async function removeFromCart(productId) {
+    try {
+        const token = localStorage.getItem('token');
+        const response = await fetch('/api/cart', {
+            method: 'DELETE',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify({
+                product_id: productId
+            })
+        });
+
+        if (!response.ok) {
+            const data = await response.json();
+            throw new Error(data.error || 'Failed to remove item from cart');
+        }
+
+        await loadCart();
+    } catch (error) {
+        console.error('Error removing item:', error);
+        showError(error.message);
+    }
+}
+
+function showError(message) {
+    const alertDiv = document.createElement('div');
+    alertDiv.className = 'alert alert-danger alert-dismissible fade show';
+    alertDiv.innerHTML = `
+        ${message}
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    `;
+    document.querySelector('#cart-content').prepend(alertDiv);
+
+    setTimeout(() => {
+        alertDiv.remove();
+    }, 5000);
+}
+
+function checkout() {
+    // Implement checkout functionality
+    alert('Checkout functionality will be implemented soon!');
+}
+</script>
+{% endblock %} 
